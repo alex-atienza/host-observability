@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search, TriangleAlert, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Maximize, Minus, Plus, Search, TriangleAlert, X } from "lucide-react";
 import { IsoFigure, Plate } from "@/components/iso/react/draw";
-import { FleetScene, GROUP_LABEL, HEIGHT, WIDTH, racksFor, type GroupBy } from "@/components/fleet/scene";
+import { FleetScene, GROUP_LABEL, HEIGHT, WIDTH, racksFor, type FleetCamera, type GroupBy } from "@/components/fleet/scene";
 import { HealthBadge, PROVIDER_COLOR, PROVIDER_SHORT } from "@/components/host/bits";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { FleetHost, Region } from "@/lib/fleet";
+import type { FleetHost, FleetSize, Region } from "@/lib/fleet";
+import { HALL_H, HALL_W, HallScene, hallFor } from "@/components/fleet/hall";
 import type { Provider } from "@/lib/hosts";
 
 type Shade = "cpu" | "mem" | "disk";
@@ -43,10 +44,31 @@ function matches(host: FleetHost, f: Filters) {
   return true;
 }
 
-export function FleetView({ hosts, regions, initialRegion }: { initialRegion?: string; hosts: FleetHost[]; regions: Region[] }) {
+type Layout = "row" | "hall";
+const ROW_LIMIT = 160; // past this, one row of racks is too small to read
+
+export function FleetView({ fleets, initialSize, regions, initialRegion }: { fleets: Record<FleetSize, FleetHost[]>; initialSize: FleetSize; initialRegion?: string; regions: Region[] }) {
+  const [size, setSize] = React.useState<FleetSize>(initialSize);
+  const hosts = fleets[size];
+  const [layout, setLayout] = React.useState<Layout>(hosts.length > ROW_LIMIT ? "hall" : "row");
+  const [minimapSlot, setMinimapSlot] = React.useState<HTMLDivElement | null>(null);
+  const [allAlerts, setAllAlerts] = React.useState(false);
+  const pickSize = (next: FleetSize) => {
+    setSize(next);
+    setLayout(fleets[next].length > ROW_LIMIT ? "hall" : "row");
+    setPage(0);
+    setPointed(null);
+    setFromTable(null);
+    const url = new URL(window.location.href);
+    if (next === "84") url.searchParams.delete("fleet");
+    else url.searchParams.set("fleet", next);
+    window.history.replaceState(null, "", url);
+  };
   const [filters, setFilters] = React.useState<Filters>(initialRegion ? { ...EMPTY, region: initialRegion } : EMPTY);
   const [shade, setShade] = React.useState<Shade>("cpu");
   const [groupBy, setGroupBy] = React.useState<GroupBy>("region");
+  const camera = React.useRef<FleetCamera | null>(null);
+  const [zoom, setZoom] = React.useState(1);
   const [sort, setSort] = React.useState<{ key: SortKey; up: boolean }>({ key: "health", up: true });
   const [page, setPage] = React.useState(0);
   const [pointed, setPointed] = React.useState<string | null>(null);
@@ -91,10 +113,36 @@ export function FleetView({ hosts, regions, initialRegion }: { initialRegion?: s
     </TableHead>
   );
 
-  const rest = `${shown.length === hosts.length ? `${hosts.length} hosts` : `${shown.length} of ${hosts.length} hosts`} · ${racksFor(hosts, regions, groupBy).length} racks by ${GROUP_LABEL[groupBy].toLowerCase()} · ${counts.degraded} degraded · ${counts.critical} critical`;
+  const rest = `${shown.length === hosts.length ? `${hosts.length} hosts` : `${shown.length} of ${hosts.length} hosts`} · ${layout === "hall" ? hallFor(hosts, regions, groupBy).racks.length : racksFor(hosts, regions, groupBy).length} racks by ${GROUP_LABEL[groupBy].toLowerCase()} · ${counts.degraded} degraded · ${counts.critical} critical`;
 
+  const hall = layout === "hall";
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm text-muted-foreground">
+        <div className="inline-flex items-center gap-2">
+          Sample fleet
+          <div role="radiogroup" aria-label="Sample fleet size" className="inline-flex rounded-lg border p-0.5">
+            {(["84", "500"] as FleetSize[]).map((key) => (
+              <button key={key} type="button" role="radio" aria-checked={size === key} onClick={() => pickSize(key)} className={cn("rounded-md px-2.5 py-1 text-xs transition-colors hover:text-foreground", size === key && "bg-muted text-foreground")}>
+                {key} hosts
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-2">
+          View
+          <div role="radiogroup" aria-label="Rack layout" className="inline-flex rounded-lg border p-0.5">
+            {(["row", "hall"] as Layout[]).map((key) => {
+              const blocked = key === "row" && hosts.length > ROW_LIMIT;
+              return (
+                <button key={key} type="button" role="radio" aria-checked={layout === key} disabled={blocked} title={blocked ? `One row can't show ${hosts.length} hosts legibly` : undefined} onClick={() => setLayout(key)} className={cn("rounded-md px-2.5 py-1 text-xs transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40", layout === key && "bg-muted text-foreground")}>
+                  {key === "row" ? "Row" : "Data hall"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
       {/* Summary numbers; the unhealthy ones filter the page. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Kpi label="Hosts" value={hosts.length} sub={`${regions.length} regions · 3 clouds`} onClick={() => set(EMPTY)} on={active === 0} />
@@ -147,8 +195,8 @@ export function FleetView({ hosts, regions, initialRegion }: { initialRegion?: s
       <div className="iso fleet-host">
         <Plate
           fig="Fleet"
-          title={`Racks by ${GROUP_LABEL[groupBy].toLowerCase()}`}
-          hint="Point at a host · click to open"
+          title={hall ? `Data hall · rows by ${GROUP_LABEL[groupBy].toLowerCase()}` : `Racks by ${GROUP_LABEL[groupBy].toLowerCase()}`}
+          hint={hall ? "Click a rack to zoom · pinch or ⌘ scroll" : "Click a host · pinch or ⌘ scroll to zoom"}
           readout={rest}
           keys={[
             { mark: "green", label: "Healthy" },
@@ -156,11 +204,35 @@ export function FleetView({ hosts, regions, initialRegion }: { initialRegion?: s
             { mark: "red", label: "Red, pulsing: critical" },
             { mark: "raised", label: `Front panel shade: ${shade === "cpu" ? "CPU" : shade === "mem" ? "memory" : "disk"} use` },
           ]}
-          caption="Each rack holds one group, up to 20 hosts, with unhealthy hosts at the top. A lit beacon means a rack has hosts that need attention, and the nameplate counts them. Groups larger than 20 fill more racks. Cloud VMs don't occupy your own racks: this is a grouping, not a map of hardware."
+          caption={
+            hall
+              ? "One row of 42U racks per group, up to four racks to a row, each row under its sign. At full view each host is a strip in its rack, coloured when unhealthy and shaded by the chosen metric; zoom in and the racks in view show real servers you can open. Racks with problems stand forward of their row, leaving their footprint, and the minimap shows where you are. Cloud VMs don't occupy your own racks: this is a grouping, not a map of hardware."
+              : "Each rack holds one group, up to 20 hosts, with unhealthy hosts at the top. Click a rack's nameplate to zoom to it. A lit beacon means a rack has hosts that need attention, and the nameplate counts them. Groups larger than 20 fill more racks. Cloud VMs don't occupy your own racks: this is a grouping, not a map of hardware."
+          }
         >
-          <IsoFigure width={WIDTH} height={HEIGHT} label={`Server racks for ${regions.length} regions holding ${hosts.length} hosts, each host a 1U blade whose front LED shows its health.`} className="fleet">
-            <FleetScene hosts={hosts} regions={regions} groupBy={groupBy} shown={shownIds} shade={shade} rest={rest} focus={fromTable} onPoint={setPointed} />
-          </IsoFigure>
+          {hall ? (
+            <IsoFigure width={HALL_W} height={HALL_H} label={`A data hall of 42U racks, one row per ${GROUP_LABEL[groupBy].toLowerCase()}, holding ${hosts.length} hosts. Racks with problems stand forward of their row.`} className="fleet">
+              <HallScene key={`hall${size}`} camera={camera} onZoom={setZoom} hosts={hosts} regions={regions} groupBy={groupBy} shown={shownIds} shade={shade} rest={rest} focus={fromTable} onPoint={setPointed} minimapSlot={minimapSlot} />
+            </IsoFigure>
+          ) : (
+            <IsoFigure width={WIDTH} height={HEIGHT} label={`Server racks for ${regions.length} regions holding ${hosts.length} hosts, each host a 1U blade whose front LED shows its health.`} className="fleet">
+              <FleetScene key={`row${size}`} camera={camera} onZoom={setZoom} hosts={hosts} regions={regions} groupBy={groupBy} shown={shownIds} shade={shade} rest={rest} focus={fromTable} onPoint={setPointed} />
+            </IsoFigure>
+          )}
+          {hall ? <div ref={setMinimapSlot} className="fleet-minimap-slot" /> : null}
+          <div className="fleet-zoom" role="group" aria-label="Zoom">
+            <button type="button" onClick={() => camera.current?.zoomBy(1 / 1.5)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out (−)">
+              <Minus className="size-3.5" />
+            </button>
+            <output aria-live="polite">{Math.round(zoom * 100)}%</output>
+            <button type="button" onClick={() => camera.current?.zoomBy(1.5)} disabled={zoom >= 6} aria-label="Zoom in" title="Zoom in (+)">
+              <Plus className="size-3.5" />
+            </button>
+            <button type="button" onClick={() => camera.current?.fit()} disabled={zoom <= 1} aria-label="Fit all racks" title="Fit all racks (0)">
+              <Maximize className="size-3.5" />
+              <span className="ml-1">Fit</span>
+            </button>
+          </div>
         </Plate>
       </div>
 
@@ -249,7 +321,7 @@ export function FleetView({ hosts, regions, initialRegion }: { initialRegion?: s
             <CardDescription>Across the fleet, worst first</CardDescription>
           </CardHeader>
           <CardContent className="space-y-1">
-            {alerts.map(({ host, title }) => (
+            {(allAlerts ? alerts : alerts.slice(0, 12)).map(({ host, title }) => (
               <Link
                 key={host.id + title}
                 href={`/hosts/${host.id}`}
@@ -267,6 +339,11 @@ export function FleetView({ hosts, regions, initialRegion }: { initialRegion?: s
               </Link>
             ))}
             {alerts.length === 0 ? <p className="text-sm text-muted-foreground">Nothing open.</p> : null}
+            {alerts.length > 12 ? (
+              <Button variant="ghost" size="sm" className="mt-1 w-full" onClick={() => setAllAlerts((v) => !v)}>
+                {allAlerts ? "Show fewer" : `Show all ${alerts.length}`}
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       </div>

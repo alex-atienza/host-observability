@@ -5,6 +5,7 @@ import { AnimatePresence, MotionConfig, animate, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { Dots, FaceText, Line, Solid } from "@/components/iso/react/draw";
 import { useReadout } from "@/components/iso/react/live";
+import { useCamera, type FleetCamera } from "./camera";
 import { axisVector, cylinder, fitProjection, iso, pathOf, sideMatrix, slabOf, type Flat, type Plan, type Point3, type Projection } from "@/components/iso/iso-kit";
 import type { FleetHost, Region } from "@/lib/fleet";
 import type { Health } from "@/lib/hosts";
@@ -100,6 +101,27 @@ function projectionFor(maxRacks: number) {
   return fitProjection(corners, WIDTH, HEIGHT, { pad: 26, azimuth: AZIMUTH, elevation: ELEVATION });
 }
 
+const TILE = PITCH / 2; // raised-floor tiles, so racks land on tile edges
+
+// The raised floor the racks stand on: a tile grid with a hot-aisle strip behind the row.
+function floorFor(P: Projection, maxRacks: number) {
+  const at = (p: Point3) => iso(p, P);
+  const span = maxRacks * RACK_W + (maxRacks - 1) * GAP;
+  // Far past the racks in every direction, so the floor fills the card at any zoom or pan.
+  const reach = TILE * 40;
+  const x0 = -reach;
+  const x1 = span + reach;
+  const y0 = -reach;
+  const y1 = DEPTH + reach;
+  const grid: string[] = [];
+  for (let x = x0; x <= x1 + 0.1; x += TILE) grid.push(pathOf([at([x, y0, 0]), at([x, y1, 0])]));
+  for (let y = y0; y <= y1 + 0.1; y += TILE) grid.push(pathOf([at([x0, y, 0]), at([x1, y, 0])]));
+  // Hot aisle behind the row: a containment strip along the floor.
+  const hot = pathOf([at([-6, -10, 0]), at([span + 6, -10, 0]), at([span + 6, -10 - TILE * 0.6, 0]), at([-6, -10 - TILE * 0.6, 0])], true);
+  const centre = at([span / 2, DEPTH / 2, 0]);
+  return { grid: grid.join(""), hot, centre, span };
+}
+
 // Every static path, built once for the projection.
 function shapesFor(P: Projection) {
   const at = (p: Point3) => iso(p, P);
@@ -161,6 +183,7 @@ function shapesFor(P: Projection) {
       plate: slab(box(inner0 + 0.3, DEPTH - 0.4, inner1 - 0.3, front), PLINTH + 0.15, U - 0.3),
       face,
       handle: seg([inner0 + 1.2, front, PLINTH + 1.1], [inner0 + 1.2, front, PLINTH + U - 1.1]),
+      handleEnds: [at([inner0 + 1.2, front, PLINTH + 1.1]), at([inner0 + 1.2, front, PLINTH + U - 1.1])],
       ears: [at([inner0 + 0.9, front, PLINTH + U / 2]), at([inner1 - 0.9, front, PLINTH + U / 2])],
       led,
     },
@@ -169,7 +192,13 @@ function shapesFor(P: Projection) {
 
 type Shapes = ReturnType<typeof shapesFor>;
 
+export type { FleetCamera } from "./camera";
+
+const MAX_ZOOM = 6;
+
 interface SceneProps {
+  camera?: React.MutableRefObject<FleetCamera | null>;
+  onZoom?: (zoom: number) => void;
   hosts: FleetHost[];
   regions: Region[];
   groupBy: GroupBy;
@@ -182,7 +211,7 @@ interface SceneProps {
 
 const FLIGHT = 1.25;
 
-export function FleetScene({ hosts, regions, groupBy, shown, shade, rest, focus, onPoint }: SceneProps) {
+export function FleetScene({ camera, onZoom, hosts, regions, groupBy, shown, shade, rest, focus, onPoint }: SceneProps) {
   const { anchor, say } = useReadout<SVGGElement>();
   const router = useRouter();
   const [hovered, setHovered] = React.useState<string | null>(null);
@@ -191,6 +220,8 @@ export function FleetScene({ hosts, regions, groupBy, shown, shade, rest, focus,
   const maxRacks = React.useMemo(() => Math.max(...(["region", "provider", "service", "health"] as GroupBy[]).map((by) => racksFor(hosts, regions, by).length)), [hosts, regions]);
   const P = React.useMemo(() => projectionFor(maxRacks), [maxRacks]);
   const shapes = React.useMemo(() => shapesFor(P), [P]);
+  const floor = React.useMemo(() => floorFor(P, maxRacks), [P, maxRacks]);
+  const ids = React.useId().replace(/:/g, "");
   const ex = React.useMemo(() => axisVector(P, [1, 0, 0]), [P]);
   const ey = React.useMemo(() => axisVector(P, [0, 1, 0]), [P]);
   const ez = React.useMemo(() => axisVector(P, [0, 0, 1]), [P]);
@@ -228,12 +259,48 @@ export function FleetScene({ hosts, regions, groupBy, shown, shade, rest, focus,
     window.setTimeout(() => router.push(`/hosts/${id}`), node ? 300 : 0);
   };
 
+  const { camNode, dragged, zoomAt, fit, zoomToBox } = useCamera({ anchor, width: WIDTH, height: HEIGHT, maxZoom: MAX_ZOOM, onZoom });
+  const zoomToRack = (index: number) => {
+    const [ox, oy] = rackAt(index);
+    const corners: Flat[] = [];
+    for (const x of [0, RACK_W]) for (const y of [0, DEPTH + LIP]) for (const z of [-2, TOP + CAP + 5]) {
+      const [sx, sy] = offset(x, y, z);
+      corners.push([sx + ox + P.origin[0], sy + oy + P.origin[1]]);
+    }
+    const xs = corners.map(([x]) => x);
+    const ys = corners.map(([, y]) => y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    zoomToBox(x0, y0, x1, y1, 0.82);
+  };
+
+  React.useEffect(() => {
+    if (!camera) return;
+    camera.current = { zoomBy: (factor) => zoomAt(WIDTH / 2, HEIGHT / 2, factor, true), fit };
+    return () => {
+      camera.current = null;
+    };
+  }, [camera, zoomAt, fit]);
+
+  // A new grouping moves every rack, so the view goes back to the whole row.
+  const firstGroup = React.useRef(true);
+  React.useEffect(() => {
+    if (firstGroup.current) {
+      firstGroup.current = false;
+      return;
+    }
+    fit();
+  }, [groupBy, fit]);
+
+
   const idOf = (event: React.SyntheticEvent) => (event.target as Element).closest("[data-host]")?.getAttribute("data-host") ?? null;
   const onKey = (event: React.KeyboardEvent) => {
     const list = placed.map((p) => p.host.id).filter((id) => shown.has(id));
-    if (!list.length) return;
     if (event.key === "Enter" && active) return open(active);
     if (event.key === "Escape") return setHovered(null);
+    if (event.key === "+" || event.key === "=") return zoomAt(WIDTH / 2, HEIGHT / 2, 1.5, true);
+    if (event.key === "-" || event.key === "_") return zoomAt(WIDTH / 2, HEIGHT / 2, 1 / 1.5, true);
+    if (event.key === "0") return fit();
+    if (!list.length) return;
     const step = event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
@@ -249,16 +316,25 @@ export function FleetScene({ hosts, regions, groupBy, shown, shade, rest, focus,
         data-shade={shade}
         tabIndex={0}
         role="group"
-        aria-label="Hosts in racks. Use the arrow keys to step through hosts and Enter to open one."
+        aria-label="Hosts in racks. Arrow keys step through hosts, Enter opens one, plus and minus zoom, 0 fits the row."
         onPointerOver={(event) => setHovered(idOf(event))}
         onPointerLeave={() => setHovered(null)}
         onClick={(event) => {
+          if (dragged.current) {
+            dragged.current = false;
+            return;
+          }
+          const plate = (event.target as Element).closest("[data-rack]")?.getAttribute("data-rack");
+          if (plate) return zoomToRack(Number(plate));
           const id = idOf(event);
           if (id && shown.has(id)) open(id);
         }}
         onKeyDown={onKey}
         onBlur={() => setHovered(null)}
       >
+        <rect key="catch" className="fleet-catch" width={WIDTH} height={HEIGHT} />
+        <g key="camera" ref={camNode} className="fleet-camera">
+        <Floor floor={floor} ids={ids} />
         {/* Rack bodies, with blanking panels in the free slots. */}
         <g key="bodies">
           <AnimatePresence initial={false}>
@@ -300,14 +376,41 @@ export function FleetScene({ hosts, regions, groupBy, shown, shade, rest, focus,
               const [x, y] = rackAt(index);
               return (
                 <motion.g key={`cap${index}`} initial={{ opacity: 0, x, y }} animate={{ opacity: 1, x, y }} exit={{ opacity: 0 }} transition={{ duration: 0.5, delay: 0.25 }}>
-                  <RackCap shapes={shapes} rack={rack} />
+                  <RackCap shapes={shapes} rack={rack} index={index} />
                 </motion.g>
               );
             })}
           </AnimatePresence>
         </g>
+        </g>
       </g>
     </MotionConfig>
+  );
+}
+
+type FloorShapes = ReturnType<typeof floorFor>;
+
+// The floor fades out toward the card's edges, and a slow scan band runs across it.
+function Floor({ floor, ids }: { floor: FloorShapes; ids: string }) {
+  return (
+    <g className="fleet-floor" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${ids}band`} gradientUnits="objectBoundingBox" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0.5" stopColor="#fff" stopOpacity="1" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <mask id={`${ids}scan`} maskUnits="userSpaceOnUse" x={-WIDTH} y={-HEIGHT} width={WIDTH * 3} height={HEIGHT * 3}>
+          <rect className="fleet-scan" x={-WIDTH * 0.2} y={-HEIGHT} width={WIDTH * 0.2} height={HEIGHT * 3} fill={`url(#${ids}band)`} />
+        </mask>
+      </defs>
+      <g>
+        <Line d={floor.grid} tone="faint" free />
+        <g mask={`url(#${ids}scan)`}>
+          <path className="fleet-floor-scanlines" d={floor.grid} />
+        </g>
+      </g>
+    </g>
   );
 }
 
@@ -342,13 +445,14 @@ function RackBody({ shapes, free, offset }: { shapes: Shapes; free: number; offs
   );
 }
 
-function RackCap({ shapes, rack }: { shapes: Shapes; rack: Rack }) {
+function RackCap({ shapes, rack, index }: { shapes: Shapes; rack: Rack; index: number }) {
   const s = shapes.rack;
   const [gx, gy] = s.beaconGlow;
   return (
     <g className="fleet-cap" data-worst={rack.worst}>
-      <Solid paths={s.cap} tone="mid" />
-      <Line d={s.plate} tone="lo" />
+      <g data-rack={index} className="fleet-plate">
+        <Solid paths={s.cap} tone="mid" />
+        <Line d={s.plate} tone="lo" />
       <FaceText transform={s.label} size={3.1} tone="hi">
         {rack.label}
         {rack.part ? <tspan className="fleet-part">{` ${rack.part}`}</tspan> : null}
@@ -357,6 +461,7 @@ function RackCap({ shapes, rack }: { shapes: Shapes; rack: Rack }) {
         {rack.alerts ? <tspan className="fleet-alerts">{`${rack.alerts}▲ `}</tspan> : null}
         {`${rack.hosts.length}`}
       </FaceText>
+      </g>
       {/* Beacon: lit when any host in the rack needs attention. */}
       <g className="fleet-beacon" data-worst={rack.worst}>
         <Solid paths={s.beaconBase} tone="mid" />
@@ -429,6 +534,7 @@ function Blade({ host, shapes, to, pull, delay, dim, on, register }: BladeProps)
       <path className="fleet-glow" d={b.face} />
       <Line d={b.face} tone="lo" />
       <Line d={b.handle} tone="mid" />
+      <Dots points={b.handleEnds} size={0.3} tone="mid" />
       <Dots points={b.ears} size={0.35} tone="mid" />
       <circle className="fleet-led" cx={round(lx)} cy={round(ly)} r={0.95} />
     </motion.g>

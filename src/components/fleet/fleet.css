@@ -52,3 +52,65 @@ html .iso.fleet-host { --anatomy-card: var(--card); --anatomy-page: var(--backgr
 .fleet-host .iso-legend { margin-top: 10px; font-size: 12.5px; line-height: 1.5; }
 .fleet-host .iso-plate-corner[data-corner="hint"] { max-width: 34%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; padding-bottom: 1px; }
 .fleet-host .iso-plate-corner[data-corner="readout"] { max-width: 64%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; line-height: 1.4; padding-bottom: 1px; }
+
+/* Zoom and pan. */
+.fleet-catch { fill: transparent; }
+.fleet .iso-svg { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.fleet .iso-svg[data-zoomed] { cursor: grab; }
+.fleet .iso-svg[data-panning] { cursor: grabbing; }
+.fleet .iso-svg[data-panning] .fleet-blade { cursor: grabbing; }
+.fleet-plate { cursor: zoom-in; }
+.fleet-zoom { position: absolute; top: 40px; right: 14px; z-index: 1; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: color-mix(in oklab, var(--card) 88%, transparent); box-shadow: 0 0 0 1px var(--border); backdrop-filter: blur(6px); }
+.fleet-zoom button { display: inline-flex; align-items: center; justify-content: center; height: 26px; min-width: 26px; padding: 0 6px; border-radius: 6px; color: var(--muted-foreground); font: 500 12px/1 var(--font-sans); }
+.fleet-zoom button:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.fleet-zoom button:disabled { opacity: 0.4; }
+.fleet-zoom button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.fleet-zoom output { min-width: 40px; text-align: center; font: 12px/1 var(--font-mono); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+
+/* Keep a zoomed scene inside the card, and keep the corner labels readable over it. */
+.fleet-host .iso-plate { overflow: hidden; isolation: isolate; }
+.fleet-host .iso-plate-corner { z-index: 2; padding: 3px 6px; border-radius: 6px; background: color-mix(in oklab, var(--card) 80%, transparent); backdrop-filter: blur(4px); }
+.fleet-host .iso-plate { background: radial-gradient(120% 90% at 50% 58%, color-mix(in oklab, var(--card) 100%, var(--anatomy-hi) 3%), var(--card) 70%); }
+
+/* Raised floor. */
+.fleet-floor-hot { fill: var(--anatomy-hi); fill-opacity: 0.03; stroke: var(--anatomy-lo); stroke-width: var(--anatomy-weight); }
+.fleet-floor-scanlines { fill: none; stroke: var(--anatomy-blue); stroke-width: calc(var(--anatomy-weight) * 1.6); stroke-opacity: 0.55; }
+.fleet-scan { animation: fleet-scan 11s linear infinite; }
+@keyframes fleet-scan { from { transform: translateX(0); } to { transform: translateX(1350px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-scan { animation: none !important; }
+  .fleet-scan { transform: translateX(560px); }
+}
+.iso-stage:not([data-inview]) .fleet-scan { animation-play-state: paused; }
+
+/* Data hall. */
+.fleet-strip { cursor: pointer; }
+.fleet-strip[data-dim] { opacity: 0.15; }
+.fleet-strip[data-on] { fill: var(--anatomy-lit) !important; fill-opacity: 1 !important; }
+.fleet-hall .fleet-face { fill-opacity: 0.08; }
+.fleet-hall[data-shade="cpu"] .fleet-strip { fill-opacity: calc(0.08 + var(--cpu) * 0.55); }
+.fleet-hall[data-shade="mem"] .fleet-strip { fill-opacity: calc(0.08 + var(--mem) * 0.55); }
+.fleet-hall[data-shade="disk"] .fleet-strip { fill-opacity: calc(0.08 + var(--disk) * 0.55); }
+.fleet-hall .fleet-strip[data-health="degraded"] { fill: var(--fleet-amber); fill-opacity: 0.85; }
+.fleet-hall .fleet-strip[data-health="critical"] { fill: var(--fleet-red); fill-opacity: 0.95; animation: fleet-pulse 1.6s ease-in-out infinite; }
+.fleet-hall-blank { fill: var(--anatomy-shade-0); stroke: var(--anatomy-faint); stroke-width: var(--anatomy-weight); }
+.fleet-hall-rack { cursor: zoom-in; }
+.fleet-hall[data-detail="blades"] .fleet-hall-rack { cursor: default; }
+.fleet-hall-rack[data-worst="healthy"] { opacity: 0.92; }
+.fleet-footprint { fill: var(--anatomy-hi); fill-opacity: 0.04; stroke: var(--anatomy-mid); stroke-width: var(--anatomy-weight); stroke-dasharray: 3 3; }
+.fleet-hall-rack[data-worst="critical"] .fleet-footprint { stroke: var(--fleet-red); }
+.fleet-hall-rack[data-worst="degraded"] .fleet-footprint { stroke: var(--fleet-amber); }
+.fleet-row-count { fill: var(--anatomy-muted); }
+@media (prefers-reduced-motion: reduce) { .fleet-hall .fleet-strip { animation: none !important; } }
+
+/* Minimap. */
+.fleet-minimap-slot { position: absolute; top: 40px; left: 14px; z-index: 2; }
+.fleet-minimap { display: block; cursor: pointer; border-radius: 6px; background: color-mix(in oklab, var(--card) 84%, transparent); box-shadow: 0 0 0 1px var(--border); backdrop-filter: blur(6px); }
+.fleet-minimap-rack { fill: var(--anatomy-lo); }
+.fleet-minimap-rack[data-worst="degraded"] { fill: var(--fleet-amber); }
+.fleet-minimap-rack[data-worst="critical"] { fill: var(--fleet-red); }
+.fleet-minimap-view { fill: var(--anatomy-hi); fill-opacity: 0.08; stroke: var(--anatomy-hi); stroke-width: 1; }
+.fleet-host { --fleet-amber: #f5a524; --fleet-red: var(--anatomy-red); }
+html:not(.dark) .fleet-host { --fleet-amber: #e08a00; }
+.fleet-sign-rod { fill: none; stroke: var(--anatomy-lo); stroke-width: var(--anatomy-weight); opacity: 0.8; }

@@ -114,12 +114,12 @@ function alertsFor(health: Health, cpu: number, mem: number, disk: number) {
   return out.length ? out : ["Status check degraded"];
 }
 
-function build(): FleetHost[] {
-  const rand = random(84);
+function build(seed: number, counts: Record<string, number>): FleetHost[] {
+  const rand = random(seed);
   const out: FleetHost[] = [];
   const pinned = new Map(HOSTS.map((host) => [host.region, host]));
   for (const region of REGIONS) {
-    for (let index = 0; index < region.count; index++) {
+    for (let index = 0; index < (counts[region.id] ?? region.count); index++) {
       const zone = region.zones[index % region.zones.length]!;
       const detailed = index === 1 ? pinned.get(region.id) : undefined;
       if (detailed) {
@@ -174,7 +174,20 @@ function build(): FleetHost[] {
   return out;
 }
 
-export const FLEET: FleetHost[] = build();
+export const FLEET: FleetHost[] = build(84, {});
+
+// A larger sample for trying the data hall view: 500 hosts in the same six regions.
+export const FLEET_500: FleetHost[] = build(500, {
+  "us-east-1": 120,
+  "eu-west-1": 70,
+  eastus2: 95,
+  westeurope: 60,
+  "us-central1": 95,
+  "asia-southeast1": 60,
+});
+
+export const FLEETS = { "84": FLEET, "500": FLEET_500 } as const;
+export type FleetSize = keyof typeof FLEETS;
 
 // The largest size in an instance's family, which is roughly what one host holds.
 function familyOf(type: string): Host["family"] {
@@ -190,7 +203,7 @@ function familyOf(type: string): Host["family"] {
   return { name: prefix!, largest: `${prefix}.48xlarge`, vcpus: 192 };
 }
 
-export const fleetHost = (id: string) => FLEET.find((host) => host.id === id);
+export const fleetHost = (id: string) => FLEET.find((host) => host.id === id) ?? FLEET_500.find((host) => host.id === id);
 
 // The full host record for the drill-down page: the detailed hosts as written, the rest
 // built from their provider's template with this host's own numbers.
@@ -201,7 +214,7 @@ export function hostRecord(id: string): Host | undefined {
   if (!lite) return undefined;
   const template = HOSTS.find((host) => host.provider === lite.provider)!;
   const type = TYPES[lite.provider].find((t) => t.name === lite.instanceType)!;
-  const seed = FLEET.indexOf(lite);
+  const seed = Math.max(FLEET.indexOf(lite), FLEET_500.indexOf(lite));
   const swap = (text: string) =>
     text
       .split(template.id)
