@@ -4,7 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { Dots, FaceText, Line, Solid } from "@/components/iso/react/draw";
+import { Dots, Line, Solid } from "@/components/iso/react/draw";
 import { useReadout } from "@/components/iso/react/live";
 import { axisVector, cameraOf, cylinder, depthOf, fitProjection, iso, pathOf, sideMatrix, slabOf, type Flat, type Plan, type Point3, type Projection } from "@/components/iso/iso-kit";
 import type { FleetHost, Region } from "@/lib/fleet";
@@ -66,6 +66,7 @@ interface Segment {
   x: number;
   y: number;
   racks: number;
+  worst: Health;
 }
 
 function groupKey(host: FleetHost, by: GroupBy) {
@@ -98,7 +99,7 @@ export function hallFor(hosts: FleetHost[], regions: Region[], by: GroupBy) {
       const inSeg = chunks.slice(s, s + PER_ROW);
       const segHosts = inSeg.flat();
       const parts = Math.ceil(chunks.length / PER_ROW);
-      segments.push({ key: `${key}#${s}`, label: parts > 1 ? `${label} ${s / PER_ROW + 1}/${parts}` : label, count: segHosts.length, alerts: segHosts.filter((h) => h.health !== "healthy").length, x: sx, y: sy, racks: inSeg.length });
+      segments.push({ key: `${key}#${s}`, label: parts > 1 ? `${label} ${s / PER_ROW + 1}/${parts}` : label, count: segHosts.length, alerts: segHosts.filter((h) => h.health !== "healthy").length, x: sx, y: sy, racks: inSeg.length, worst: segHosts.reduce<Health>((w, h) => (SEVERITY[h.health] < SEVERITY[w] ? h.health : w), "healthy") });
       inSeg.forEach((chunk, j) => {
         const worst = chunk.reduce<Health>((w, h) => (SEVERITY[h.health] < SEVERITY[w] ? h.health : w), "healthy");
         racks.push({ key: `${key}#${s + j}`, group: key, label, hosts: chunk, worst, alerts: chunk.filter((h) => h.health !== "healthy").length, x: sx + j * PITCH, y: sy, forward: worst !== "healthy" });
@@ -422,13 +423,8 @@ function RowSign({ segment, P }: { segment: Segment; P: Projection }) {
         <path key={k} className="fleet-sign-rod" d={pathOf(points)} data-free="end" />
       ))}
       <Solid paths={plate} tone="mid" />
-      <FaceText transform={sideMatrix([7, y + 1.6], SIGN_Z + SIGN_H - 3.2, P, "left")} size={7.5} tone="hi">
-        {segment.label}
-      </FaceText>
-      <FaceText transform={sideMatrix([w - 3, y + 1.6], SIGN_Z + SIGN_H - 3.2, P, "left")} size={6.4} tone="mid" anchor="end">
-        {segment.alerts ? <tspan className="fleet-alerts">{`${segment.alerts}▲  `}</tspan> : null}
-        {`${segment.count}`}
-      </FaceText>
+      {/* Where the row's HTML label points: the middle of the sign's top edge. */}
+      <circle className="fleet-anchor" cx={round(at([2 + w / 2, y, SIGN_Z + SIGN_H])[0])} cy={round(at([2 + w / 2, y, SIGN_Z + SIGN_H])[1])} r={0} data-anchor={segment.key} data-title={segment.label} data-count={segment.count} data-alerts={segment.alerts} data-worst={segment.worst} />
     </g>
   );
 }
@@ -521,13 +517,6 @@ function RackHead({ rack, shapes, glow }: { rack: HallRack; shapes: Shapes; glow
     <g className="fleet-cap" data-worst={rack.worst}>
       <Solid paths={shapes.cap} tone="mid" />
       <Line d={shapes.plate} tone="lo" />
-      <FaceText transform={shapes.label} size={2.6} tone="hi">
-        {rack.label}
-      </FaceText>
-      <FaceText transform={shapes.count} size={2.4} tone="mid" anchor="end">
-        {rack.alerts ? <tspan className="fleet-alerts">{`${rack.alerts}▲ `}</tspan> : null}
-        {`${rack.hosts.length}`}
-      </FaceText>
       <g className="fleet-beacon" data-worst={rack.worst}>
         <Solid paths={shapes.beaconBase} tone="mid" />
         <ellipse className="fleet-beacon-glow" cx={round(glow[0])} cy={round(glow[1])} rx={11} ry={8} />

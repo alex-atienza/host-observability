@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 import type { FleetHost, FleetSize, Region } from "@/lib/fleet";
 import { HALL_H, HALL_W, HallScene, hallFor } from "@/components/fleet/hall";
+import { HostTooltip, RackLabels } from "@/components/fleet/overlay";
 import type { Provider } from "@/lib/hosts";
 
 type Shade = "cpu" | "mem" | "disk";
@@ -53,6 +54,7 @@ export function FleetView({ fleets, initialSize, regions, initialRegion }: { fle
   const [layout, setLayout] = React.useState<Layout>(hosts.length > ROW_LIMIT ? "hall" : "row");
   const [minimapSlot, setMinimapSlot] = React.useState<HTMLDivElement | null>(null);
   const [allAlerts, setAllAlerts] = React.useState(false);
+  const plateRef = React.useRef<HTMLDivElement | null>(null);
   const pickSize = (next: FleetSize) => {
     setSize(next);
     setLayout(fleets[next].length > ROW_LIMIT ? "hall" : "row");
@@ -116,6 +118,8 @@ export function FleetView({ fleets, initialSize, regions, initialRegion }: { fle
   const rest = `${shown.length === hosts.length ? `${hosts.length} hosts` : `${shown.length} of ${hosts.length} hosts`} · ${layout === "hall" ? hallFor(hosts, regions, groupBy).racks.length : racksFor(hosts, regions, groupBy).length} racks by ${GROUP_LABEL[groupBy].toLowerCase()} · ${counts.degraded} degraded · ${counts.critical} critical`;
 
   const hall = layout === "hall";
+  const tipId = pointed ?? fromTable;
+  const tipHost = tipId ? (hosts.find((h) => h.id === tipId) ?? null) : null;
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm text-muted-foreground">
@@ -220,6 +224,9 @@ export function FleetView({ fleets, initialSize, regions, initialRegion }: { fle
             </IsoFigure>
           )}
           {hall ? <div ref={setMinimapSlot} className="fleet-minimap-slot" /> : null}
+          <span hidden ref={(el) => void (plateRef.current = (el?.closest(".iso-plate") as HTMLDivElement | null) ?? null)} />
+          <RackLabels plate={plateRef} version={`${size}-${layout}-${groupBy}`} />
+          <HostTooltip plate={plateRef} host={tipHost} hint={hall && zoom < 2.2 ? "Click to zoom to its rack" : "Click to open the host"} />
           <div className="fleet-zoom" role="group" aria-label="Zoom">
             <button type="button" onClick={() => camera.current?.zoomBy(1 / 1.5)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out (−)">
               <Minus className="size-3.5" />

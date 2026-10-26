@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AnimatePresence, MotionConfig, animate, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { Dots, FaceText, Line, Solid } from "@/components/iso/react/draw";
+import { Dots, Line, Solid } from "@/components/iso/react/draw";
 import { useReadout } from "@/components/iso/react/live";
 import { useCamera, type FleetCamera } from "./camera";
 import { axisVector, cylinder, fitProjection, iso, pathOf, sideMatrix, slabOf, type Flat, type Plan, type Point3, type Projection } from "@/components/iso/iso-kit";
@@ -453,15 +453,9 @@ function RackCap({ shapes, rack, index }: { shapes: Shapes; rack: Rack; index: n
       <g data-rack={index} className="fleet-plate">
         <Solid paths={s.cap} tone="mid" />
         <Line d={s.plate} tone="lo" />
-      <FaceText transform={s.label} size={3.1} tone="hi">
-        {rack.label}
-        {rack.part ? <tspan className="fleet-part">{` ${rack.part}`}</tspan> : null}
-      </FaceText>
-      <FaceText transform={s.count} size={2.7} tone="mid" anchor="end">
-        {rack.alerts ? <tspan className="fleet-alerts">{`${rack.alerts}▲ `}</tspan> : null}
-        {`${rack.hosts.length}`}
-      </FaceText>
       </g>
+      {/* Where the rack's HTML label points: just above its beacon. */}
+      <circle className="fleet-anchor" cx={round(gx)} cy={round(gy - 4)} r={0} data-anchor={`rack${index}`} data-title={rack.part ? `${rack.label} ${rack.part}` : rack.label} data-count={rack.hosts.length} data-alerts={rack.alerts} data-worst={rack.worst} />
       {/* Beacon: lit when any host in the rack needs attention. */}
       <g className="fleet-beacon" data-worst={rack.worst}>
         <Solid paths={s.beaconBase} tone="mid" />
