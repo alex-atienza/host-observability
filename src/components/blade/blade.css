@@ -1,0 +1,25 @@
+.blade { outline: none; cursor: default; }
+.blade [data-part] { transition: opacity 0.25s var(--anatomy-ease); }
+.blade[data-focus] [data-part]:not([data-on]) { opacity: 0.45; }
+.blade-root:focus { outline: none; }
+.iso-plate:has(.blade-root:focus-visible) { box-shadow: 0 0 0 2px var(--ring); }
+.blade [data-on] .iso-edge { stroke: var(--anatomy-lit); }
+.blade [data-on] .iso-top { fill: var(--anatomy-lit-top); }
+.blade [data-on] > .iso-line, .blade [data-on] .iso-dots { stroke: var(--anatomy-hi); }
+.blade-leds circle { stroke: none; }
+.blade-leds[data-state="ok"] circle { fill: var(--anatomy-green); }
+.blade-leds[data-state="id"] circle { fill: var(--anatomy-blue); }
+.blade-leds[data-state="warn"] circle { fill: #f5a524; }
+.blade-leds[data-state="act"] circle { fill: var(--anatomy-green); animation: blade-blink 1.3s steps(2, jump-none) infinite; }
+.blade-leds[data-state="act"] circle:nth-child(2n) { animation-duration: 0.9s; }
+@keyframes blade-blink { 0% { opacity: 1; } 100% { opacity: 0.15; } }
+@media (prefers-reduced-motion: reduce) { .blade-leds[data-state="act"] circle { animation: none; } }
+.iso-stage:not([data-inview]) .blade-leds circle { animation-play-state: paused; }
+
+/* Sit the anatomy plate inside the shadcn card system. */
+html .iso.blade-host { --anatomy-card: var(--card); --anatomy-page: var(--background); height: 100%; }
+.blade-host .iso-figure { margin: 0; height: 100%; display: flex; flex-direction: column; }
+.blade-host .iso-plate { border-radius: calc(var(--radius) + 4px); box-shadow: 0 0 0 1px var(--border); flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.blade-host .iso-legend { margin-top: 10px; font-size: 12.5px; line-height: 1.5; }
+.blade-host .iso-plate-corner[data-corner="hint"] { max-width: 26%; line-height: 1.4; padding-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blade-host .iso-plate-corner[data-corner="readout"] { max-width: 72%; line-height: 1.4; padding-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
