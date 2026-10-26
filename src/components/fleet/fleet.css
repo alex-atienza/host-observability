@@ -1,0 +1,156 @@
+.fleet { outline: none; --fleet-amber: #f5a524; --fleet-red: var(--anatomy-red); }
+.iso[data-theme="light"] .fleet, html:not(.dark) .fleet { --fleet-amber: #e08a00; }
+
+/* Front panels shade by the chosen metric. */
+.fleet-face { stroke: none; fill: var(--anatomy-hi); fill-opacity: 0.06; transition: fill-opacity 0.4s var(--anatomy-ease), fill 0.4s var(--anatomy-ease); }
+.fleet-root[data-shade="cpu"] .fleet-face { fill-opacity: calc(0.03 + var(--cpu) * 0.45); }
+.fleet-root[data-shade="mem"] .fleet-face { fill-opacity: calc(0.03 + var(--mem) * 0.45); }
+.fleet-root[data-shade="disk"] .fleet-face { fill-opacity: calc(0.03 + var(--disk) * 0.45); }
+
+/* Unhealthy hosts: the whole front panel takes the alert colour, so it reads across the room. */
+.fleet-root .fleet-blade[data-health="degraded"] .fleet-face { fill: var(--fleet-amber); fill-opacity: 0.7; }
+.fleet-root .fleet-blade[data-health="critical"] .fleet-face { fill: var(--fleet-red); fill-opacity: 0.85; }
+.fleet-glow { fill: none; stroke: none; pointer-events: none; }
+.fleet-blade[data-health="critical"] .fleet-glow { stroke: var(--fleet-red); stroke-width: 3.5; filter: blur(2.6px); animation: fleet-pulse 1.6s ease-in-out infinite; }
+.fleet-blade[data-health="degraded"] .fleet-glow { stroke: var(--fleet-amber); stroke-width: 2.4; filter: blur(2.4px); opacity: 0.55; }
+
+.fleet-led { stroke: none; fill: var(--anatomy-green); }
+.fleet-blade[data-health="degraded"] .fleet-led { fill: var(--anatomy-lit); }
+.fleet-blade[data-health="critical"] .fleet-led { fill: var(--anatomy-lit); animation: fleet-pulse 0.8s steps(2, jump-none) infinite; }
+@keyframes fleet-pulse { 50% { opacity: 0.3; } }
+
+/* A blade's body only shows while it is out of the rack. */
+.fleet-body { opacity: 0; transition: opacity 0.18s; }
+.fleet-blade[data-out] .fleet-body { opacity: 1; }
+
+.fleet-blade { cursor: pointer; transition: opacity 0.3s var(--anatomy-ease); }
+.fleet-blade[data-dim] { opacity: 0.14; }
+.fleet-blade[data-dim] .fleet-glow, .fleet-blade[data-dim] .fleet-led { animation: none; }
+.fleet-blade[data-on] .iso-edge, .fleet-blade[data-on] .iso-line { stroke: var(--anatomy-lit); }
+.fleet-blade[data-on] .iso-top { fill: var(--anatomy-lit-top); }
+
+/* Rack beacons and nameplates. */
+.fleet-beacon-glow { fill: transparent; stroke: none; filter: blur(5px); pointer-events: none; }
+.fleet-beacon[data-worst="degraded"] .fleet-beacon-glow { fill: var(--fleet-amber); opacity: 0.55; }
+.fleet-beacon[data-worst="critical"] .fleet-beacon-glow { fill: var(--fleet-red); opacity: 0.8; animation: fleet-pulse 1.1s ease-in-out infinite; }
+.fleet-beacon[data-worst="degraded"] .iso-top, .fleet-beacon[data-worst="degraded"] .iso-shade { fill: var(--fleet-amber); }
+.fleet-beacon[data-worst="critical"] .iso-top, .fleet-beacon[data-worst="critical"] .iso-shade { fill: var(--fleet-red); }
+.fleet-alerts { fill: var(--fleet-amber); font-weight: 600; }
+.fleet-cap[data-worst="critical"] .fleet-alerts { fill: var(--fleet-red); }
+.fleet-part { fill: var(--anatomy-mid); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-blade .fleet-glow, .fleet-blade .fleet-led, .fleet-beacon-glow { animation: none !important; }
+}
+.iso-stage:not([data-inview]) .fleet-glow, .iso-stage:not([data-inview]) .fleet-led, .iso-stage:not([data-inview]) .fleet-beacon-glow { animation-play-state: paused; }
+
+.fleet-root:focus { outline: none; }
+.iso-plate:has(.fleet-root:focus-visible) { box-shadow: 0 0 0 2px var(--ring); }
+html .iso.fleet-host { --anatomy-card: var(--card); --anatomy-page: var(--background); }
+.fleet-host .iso-figure { margin: 0; }
+.fleet-host .iso-plate { border-radius: calc(var(--radius) + 4px); box-shadow: 0 0 0 1px var(--border); padding: 48px 16px; }
+.fleet-host .iso-legend { margin-top: 10px; font-size: 12.5px; line-height: 1.5; }
+.fleet-host .iso-plate-corner[data-corner="hint"] { max-width: 34%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; padding-bottom: 1px; }
+.fleet-host .iso-plate-corner[data-corner="readout"] { max-width: 64%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; line-height: 1.4; padding-bottom: 1px; }
+
+/* Zoom and pan. */
+.fleet-catch { fill: transparent; }
+.fleet .iso-svg { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.fleet .iso-svg[data-zoomed] { cursor: grab; }
+.fleet .iso-svg[data-panning] { cursor: grabbing; }
+.fleet .iso-svg[data-panning] .fleet-blade { cursor: grabbing; }
+.fleet-plate { cursor: zoom-in; }
+.fleet-zoom { position: absolute; top: 40px; right: 14px; z-index: 1; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: color-mix(in oklab, var(--card) 88%, transparent); box-shadow: 0 0 0 1px var(--border); backdrop-filter: blur(6px); }
+.fleet-zoom button { display: inline-flex; align-items: center; justify-content: center; height: 26px; min-width: 26px; padding: 0 6px; border-radius: 6px; color: var(--muted-foreground); font: 500 12px/1 var(--font-sans); }
+.fleet-zoom button:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.fleet-zoom button:disabled { opacity: 0.4; }
+.fleet-zoom button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.fleet-zoom output { min-width: 40px; text-align: center; font: 12px/1 var(--font-mono); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+
+/* Keep a zoomed scene inside the card, and keep the corner labels readable over it. */
+.fleet-host .iso-plate { overflow: hidden; isolation: isolate; }
+.fleet-host .iso-plate-corner { z-index: 2; padding: 3px 6px; border-radius: 6px; background: color-mix(in oklab, var(--card) 80%, transparent); backdrop-filter: blur(4px); }
+.fleet-host .iso-plate { background: radial-gradient(120% 90% at 50% 58%, color-mix(in oklab, var(--card) 100%, var(--anatomy-hi) 3%), var(--card) 70%); }
+
+/* Raised floor. */
+.fleet-floor-hot { fill: var(--anatomy-hi); fill-opacity: 0.03; stroke: var(--anatomy-lo); stroke-width: var(--anatomy-weight); }
+.fleet-floor-scanlines { fill: none; stroke: var(--anatomy-blue); stroke-width: calc(var(--anatomy-weight) * 1.6); stroke-opacity: 0.55; }
+.fleet-scan { animation: fleet-scan 11s linear infinite; }
+@keyframes fleet-scan { from { transform: translateX(0); } to { transform: translateX(1350px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-scan { animation: none !important; }
+  .fleet-scan { transform: translateX(560px); }
+}
+.iso-stage:not([data-inview]) .fleet-scan { animation-play-state: paused; }
+
+/* Data hall. */
+.fleet-strip { cursor: pointer; }
+.fleet-strip[data-dim] { opacity: 0.15; }
+.fleet-strip[data-on] { fill: var(--anatomy-lit) !important; fill-opacity: 1 !important; }
+.fleet-hall .fleet-face { fill-opacity: 0.08; }
+.fleet-hall[data-shade="cpu"] .fleet-strip { fill-opacity: calc(0.08 + var(--cpu) * 0.55); }
+.fleet-hall[data-shade="mem"] .fleet-strip { fill-opacity: calc(0.08 + var(--mem) * 0.55); }
+.fleet-hall[data-shade="disk"] .fleet-strip { fill-opacity: calc(0.08 + var(--disk) * 0.55); }
+.fleet-hall .fleet-strip[data-health="degraded"] { fill: var(--fleet-amber); fill-opacity: 0.85; }
+.fleet-hall .fleet-strip[data-health="critical"] { fill: var(--fleet-red); fill-opacity: 0.95; animation: fleet-pulse 1.6s ease-in-out infinite; }
+.fleet-hall-blank { fill: var(--anatomy-shade-0); stroke: var(--anatomy-faint); stroke-width: var(--anatomy-weight); }
+.fleet-hall-rack { cursor: zoom-in; }
+.fleet-hall[data-detail="blades"] .fleet-hall-rack { cursor: default; }
+.fleet-hall-rack[data-worst="healthy"] { opacity: 0.92; }
+.fleet-footprint { fill: var(--anatomy-hi); fill-opacity: 0.04; stroke: var(--anatomy-mid); stroke-width: var(--anatomy-weight); stroke-dasharray: 3 3; }
+.fleet-hall-rack[data-worst="critical"] .fleet-footprint { stroke: var(--fleet-red); }
+.fleet-hall-rack[data-worst="degraded"] .fleet-footprint { stroke: var(--fleet-amber); }
+.fleet-row-count { fill: var(--anatomy-muted); }
+@media (prefers-reduced-motion: reduce) { .fleet-hall .fleet-strip { animation: none !important; } }
+
+/* Minimap. */
+.fleet-minimap-slot { position: absolute; top: 40px; left: 14px; z-index: 2; }
+.fleet-minimap { display: block; cursor: pointer; border-radius: 6px; background: color-mix(in oklab, var(--card) 84%, transparent); box-shadow: 0 0 0 1px var(--border); backdrop-filter: blur(6px); }
+.fleet-minimap-rack { fill: var(--anatomy-lo); }
+.fleet-minimap-rack[data-worst="degraded"] { fill: var(--fleet-amber); }
+.fleet-minimap-rack[data-worst="critical"] { fill: var(--fleet-red); }
+.fleet-minimap-view { fill: var(--anatomy-hi); fill-opacity: 0.08; stroke: var(--anatomy-hi); stroke-width: 1; }
+.fleet-host { --fleet-amber: #f5a524; --fleet-red: var(--anatomy-red); }
+html:not(.dark) .fleet-host { --fleet-amber: #e08a00; }
+.fleet-sign-rod { fill: none; stroke: var(--anatomy-lo); stroke-width: var(--anatomy-weight); opacity: 0.8; }
+
+/* Rack and row labels on leader lines. */
+.fleet-labels { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; border-radius: inherit; }
+.fleet-label { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; will-change: transform; transition: opacity 0.2s; }
+.fleet-label > * { translate: -50% 0; }
+.fleet-label { margin-top: -26px; }
+.fleet-label-pill { position: absolute; bottom: 100%; left: 0; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; font: 500 11.5px/1.2 var(--font-sans); color: var(--foreground); background: color-mix(in oklab, var(--card) 88%, transparent); box-shadow: 0 0 0 1px var(--border), 0 2px 8px rgb(0 0 0 / 0.18); backdrop-filter: blur(6px); }
+.fleet-label-title { font-family: var(--font-mono); font-size: 11px; }
+.fleet-label-count { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.fleet-label-alerts { color: var(--fleet-amber); font-weight: 600; font-variant-numeric: tabular-nums; }
+.fleet-label[data-worst="critical"] .fleet-label-alerts { color: var(--fleet-red); }
+.fleet-label[data-worst="critical"] .fleet-label-pill { box-shadow: 0 0 0 1px color-mix(in oklab, var(--fleet-red) 55%, transparent), 0 2px 8px rgb(0 0 0 / 0.18); }
+.fleet-label[data-worst="degraded"] .fleet-label-pill { box-shadow: 0 0 0 1px color-mix(in oklab, var(--fleet-amber) 50%, transparent), 0 2px 8px rgb(0 0 0 / 0.18); }
+.fleet-label-line { position: absolute; top: 0; left: 0; width: 1px; height: 26px; background: linear-gradient(var(--border), color-mix(in oklab, var(--foreground) 45%, transparent)); }
+.fleet-label-line::after { content: ""; position: absolute; left: -2px; bottom: -2px; width: 5px; height: 5px; border-radius: 50%; background: var(--foreground); opacity: 0.7; }
+
+/* Host tooltip. */
+.fleet-tip-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; border-radius: inherit; }
+.fleet-tip { position: absolute; left: 0; top: 0; width: 272px; padding: 10px 12px; border-radius: 10px; background: color-mix(in oklab, var(--popover) 94%, transparent); color: var(--popover-foreground); box-shadow: 0 0 0 1px var(--border), 0 8px 24px rgb(0 0 0 / 0.28); backdrop-filter: blur(8px); font: 12px/1.4 var(--font-sans); transition: opacity 0.15s; will-change: transform; }
+.fleet-tip[data-health="degraded"] { box-shadow: 0 0 0 1px color-mix(in oklab, var(--fleet-amber) 60%, transparent), 0 8px 24px rgb(0 0 0 / 0.28); }
+.fleet-tip[data-health="critical"] { box-shadow: 0 0 0 1px color-mix(in oklab, var(--fleet-red) 65%, transparent), 0 8px 24px rgb(0 0 0 / 0.28); }
+.fleet-tip-host { font: 500 12.5px/1.3 var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-tip-sub { margin-top: 2px; color: var(--muted-foreground); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-tip-health { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fleet-tip-alert { margin-top: 2px; color: var(--muted-foreground); font-size: 11.5px; }
+.fleet-tip-more { margin-left: auto; font-weight: 400; color: var(--muted-foreground); font-size: 11px; }
+.fleet-tip-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--anatomy-green); }
+.fleet-tip[data-health="degraded"] .fleet-tip-dot { background: var(--fleet-amber); }
+.fleet-tip[data-health="critical"] .fleet-tip-dot { background: var(--fleet-red); }
+.fleet-tip-bars { display: grid; gap: 4px; margin-top: 8px; }
+.fleet-tip-bar { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 8px; color: var(--muted-foreground); font-size: 11px; }
+.fleet-tip-track { height: 5px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+.fleet-tip-fill { display: block; height: 100%; border-radius: inherit; }
+.fleet-tip-fill.is-green { background: #10b981; }
+.fleet-tip-fill.is-amber { background: #f59e0b; }
+.fleet-tip-fill.is-red { background: #ef4444; }
+.fleet-tip-value { text-align: right; font-family: var(--font-mono); color: var(--foreground); font-variant-numeric: tabular-nums; }
+.fleet-tip-hint { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; }
+.fleet-tip-line { position: absolute; left: 0; top: 0; height: 1px; transform-origin: 0 50%; background: color-mix(in oklab, var(--foreground) 55%, transparent); transition: opacity 0.15s; }
+.fleet-tip-line::before { content: ""; position: absolute; left: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--foreground); box-shadow: 0 0 0 2px var(--card); }
