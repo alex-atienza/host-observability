@@ -12,10 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { HOSTS } from "@/lib/hosts";
-import { FLEET, hostRecord } from "@/lib/fleet";
+import { FLEET, FLEET_500, hostRecord } from "@/lib/fleet";
+
+// Every host in both sample fleets gets a page, so the site can be exported as static files.
+export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return FLEET.map((host) => ({ id: host.id }));
+  return [...FLEET, ...FLEET_500].map((host) => ({ id: host.id }));
 }
 
 const ENDPOINT = {

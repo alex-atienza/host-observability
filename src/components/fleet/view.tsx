@@ -48,8 +48,8 @@ function matches(host: FleetHost, f: Filters) {
 type Layout = "row" | "hall";
 const ROW_LIMIT = 160; // past this, one row of racks is too small to read
 
-export function FleetView({ fleets, initialSize, regions, initialRegion }: { fleets: Record<FleetSize, FleetHost[]>; initialSize: FleetSize; initialRegion?: string; regions: Region[] }) {
-  const [size, setSize] = React.useState<FleetSize>(initialSize);
+export function FleetView({ fleets, regions }: { fleets: Record<FleetSize, FleetHost[]>; regions: Region[] }) {
+  const [size, setSize] = React.useState<FleetSize>("84");
   const hosts = fleets[size];
   const [layout, setLayout] = React.useState<Layout>(hosts.length > ROW_LIMIT ? "hall" : "row");
   const [minimapSlot, setMinimapSlot] = React.useState<HTMLDivElement | null>(null);
@@ -66,7 +66,18 @@ export function FleetView({ fleets, initialSize, regions, initialRegion }: { fle
     else url.searchParams.set("fleet", next);
     window.history.replaceState(null, "", url);
   };
-  const [filters, setFilters] = React.useState<Filters>(initialRegion ? { ...EMPTY, region: initialRegion } : EMPTY);
+  const [filters, setFilters] = React.useState<Filters>(EMPTY);
+
+  // ?fleet=500 and ?region=… come from the address bar, read once in the browser.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("fleet") === "500") {
+      setSize("500");
+      setLayout(fleets["500"].length > ROW_LIMIT ? "hall" : "row");
+    }
+    const region = params.get("region");
+    if (region && regions.some((r) => r.id === region)) setFilters({ ...EMPTY, region });
+  }, [fleets, regions]);
   const [shade, setShade] = React.useState<Shade>("cpu");
   const [groupBy, setGroupBy] = React.useState<GroupBy>("region");
   const camera = React.useRef<FleetCamera | null>(null);
