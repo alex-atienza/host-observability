@@ -12,6 +12,7 @@
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
     "lucide-react": "^1.61.0",
+    "motion": "^12.23.28",
     "next": "15.5.4",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.8.1",

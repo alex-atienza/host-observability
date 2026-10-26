@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search, TriangleAlert, X } from "lucide-react";
 import { IsoFigure, Plate } from "@/components/iso/react/draw";
-import { asksForStillness, useReadout } from "@/components/iso/react/live";
+import { FleetScene, GROUP_LABEL, HEIGHT, WIDTH, racksFor, type GroupBy } from "@/components/fleet/scene";
 import { HealthBadge, PROVIDER_COLOR, PROVIDER_SHORT } from "@/components/host/bits";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,9 +43,10 @@ function matches(host: FleetHost, f: Filters) {
   return true;
 }
 
-export function FleetView({ art, hosts, regions, width, height, initialRegion }: { initialRegion?: string; art: React.ReactNode; hosts: FleetHost[]; regions: Region[]; width: number; height: number }) {
+export function FleetView({ hosts, regions, initialRegion }: { initialRegion?: string; hosts: FleetHost[]; regions: Region[] }) {
   const [filters, setFilters] = React.useState<Filters>(initialRegion ? { ...EMPTY, region: initialRegion } : EMPTY);
   const [shade, setShade] = React.useState<Shade>("cpu");
+  const [groupBy, setGroupBy] = React.useState<GroupBy>("region");
   const [sort, setSort] = React.useState<{ key: SortKey; up: boolean }>({ key: "health", up: true });
   const [page, setPage] = React.useState(0);
   const [pointed, setPointed] = React.useState<string | null>(null);
@@ -91,7 +91,7 @@ export function FleetView({ art, hosts, regions, width, height, initialRegion }:
     </TableHead>
   );
 
-  const rest = `${shown.length === hosts.length ? `${hosts.length} hosts` : `${shown.length} of ${hosts.length} hosts`} · ${regions.length} regions · ${counts.degraded} degraded · ${counts.critical} critical`;
+  const rest = `${shown.length === hosts.length ? `${hosts.length} hosts` : `${shown.length} of ${hosts.length} hosts`} · ${racksFor(hosts, regions, groupBy).length} racks by ${GROUP_LABEL[groupBy].toLowerCase()} · ${counts.degraded} degraded · ${counts.critical} critical`;
 
   return (
     <div className="space-y-6">
@@ -119,7 +119,18 @@ export function FleetView({ art, hosts, regions, width, height, initialRegion }:
             <X className="size-4" /> Clear {active}
           </Button>
         ) : null}
-        <div className="ml-auto inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+          Group by
+          <div role="radiogroup" aria-label="Group racks by" className="inline-flex rounded-lg border p-0.5">
+            {(Object.keys(GROUP_LABEL) as GroupBy[]).map((key) => (
+              <button key={key} type="button" role="radio" aria-checked={groupBy === key} onClick={() => setGroupBy(key)} className={cn("rounded-md px-2.5 py-1 text-xs transition-colors hover:text-foreground", groupBy === key && "bg-muted text-foreground")}>
+                {GROUP_LABEL[key]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
           Shade by
           <div role="radiogroup" aria-label="Shade blades by" className="inline-flex rounded-lg border p-0.5">
             {(["cpu", "mem", "disk"] as Shade[]).map((key) => (
@@ -129,25 +140,26 @@ export function FleetView({ art, hosts, regions, width, height, initialRegion }:
             ))}
           </div>
         </div>
+        </div>
       </div>
 
       {/* The racks */}
       <div className="iso fleet-host">
         <Plate
           fig="Fleet"
-          title="One rack per region"
+          title={`Racks by ${GROUP_LABEL[groupBy].toLowerCase()}`}
           hint="Point at a host · click to open"
           readout={rest}
           keys={[
             { mark: "green", label: "Healthy" },
-            { mark: "dim", label: "Amber: degraded" },
-            { mark: "red", label: "Critical" },
+            { mark: "dim", label: "Amber panel: degraded" },
+            { mark: "red", label: "Red, pulsing: critical" },
             { mark: "raised", label: `Front panel shade: ${shade === "cpu" ? "CPU" : shade === "mem" ? "memory" : "disk"} use` },
           ]}
-          caption="Each rack groups one region's hosts by availability zone; the bright ticks on the left post mark zone boundaries and the count sits on the nameplate. Cloud VMs don't occupy your own racks: this is a grouping, not a map of hardware. Blanks are free slots in a 20U rack."
+          caption="Each rack holds one group, up to 20 hosts, with unhealthy hosts at the top. A lit beacon means a rack has hosts that need attention, and the nameplate counts them. Groups larger than 20 fill more racks. Cloud VMs don't occupy your own racks: this is a grouping, not a map of hardware."
         >
-          <IsoFigure width={width} height={height} label={`Server racks for ${regions.length} regions holding ${hosts.length} hosts, each host a 1U blade whose front LED shows its health.`} className="fleet">
-            <FleetLive art={art} hosts={hosts} shown={shownIds} shade={shade} rest={rest} focus={fromTable} onPoint={setPointed} />
+          <IsoFigure width={WIDTH} height={HEIGHT} label={`Server racks for ${regions.length} regions holding ${hosts.length} hosts, each host a 1U blade whose front LED shows its health.`} className="fleet">
+            <FleetScene hosts={hosts} regions={regions} groupBy={groupBy} shown={shownIds} shade={shade} rest={rest} focus={fromTable} onPoint={setPointed} />
           </IsoFigure>
         </Plate>
       </div>
@@ -308,78 +320,5 @@ function Bar({ value }: { value: number }) {
       </div>
       <span className="font-mono text-xs tabular-nums">{value}%</span>
     </div>
-  );
-}
-
-function FleetLive({ art, hosts, shown, shade, rest, focus, onPoint }: { art: React.ReactNode; hosts: FleetHost[]; shown: Set<string>; shade: Shade; rest: string; focus: string | null; onPoint: (id: string | null) => void }) {
-  const { anchor, say } = useReadout<SVGGElement>();
-  const router = useRouter();
-  const [hovered, setHovered] = React.useState<string | null>(null);
-  const byId = React.useMemo(() => new Map(hosts.map((h) => [h.id, h])), [hosts]);
-  const active = hovered ?? focus;
-
-  React.useEffect(() => {
-    anchor.current?.closest(".fleet")?.setAttribute("data-shade", shade);
-  }, [anchor, shade]);
-
-  React.useEffect(() => {
-    anchor.current?.querySelectorAll<SVGGElement>("[data-host]").forEach((node) => {
-      if (shown.has(node.dataset.host!)) node.removeAttribute("data-dim");
-      else node.setAttribute("data-dim", "");
-    });
-  }, [anchor, shown]);
-
-  React.useEffect(() => {
-    const root = anchor.current;
-    if (!root) return;
-    root.querySelectorAll("[data-on]").forEach((node) => node.removeAttribute("data-on"));
-    const host = active ? byId.get(active) : undefined;
-    if (host) {
-      root.querySelector(`[data-host="${host.id}"]`)?.setAttribute("data-on", "");
-      say(`${host.hostname} · ${host.instanceType} · CPU ${host.cpu}% · mem ${host.mem}% · ${host.health}`);
-    } else say(rest);
-  }, [active, anchor, byId, rest, say]);
-
-  React.useEffect(() => onPoint(hovered), [hovered, onPoint]);
-
-  const open = (id: string) => {
-    const node = anchor.current?.querySelector<SVGGElement>(`[data-host="${id}"] .fleet-slide`);
-    if (node && !asksForStillness()) {
-      node.setAttribute("transform", node.dataset.slide!);
-      window.setTimeout(() => router.push(`/hosts/${id}`), 320);
-    } else router.push(`/hosts/${id}`);
-  };
-  const idOf = (event: React.SyntheticEvent) => (event.target as Element).closest("[data-host]")?.getAttribute("data-host") ?? null;
-  const order = React.useMemo(() => hosts.map((h) => h.id), [hosts]);
-  const onKey = (event: React.KeyboardEvent) => {
-    const list = order.filter((id) => shown.has(id));
-    if (!list.length) return;
-    if (event.key === "Enter" && active) return open(active);
-    if (event.key === "Escape") return setHovered(null);
-    const step = event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const index = active ? list.indexOf(active) : -1;
-    setHovered(list[(index + step + list.length) % list.length]!);
-  };
-
-  return (
-    <g
-      ref={anchor}
-      className="fleet-root"
-      tabIndex={0}
-      role="group"
-      aria-label="Hosts in racks. Use the arrow keys to step through hosts and Enter to open one."
-      onPointerOver={(event) => setHovered(idOf(event))}
-      onPointerLeave={() => setHovered(null)}
-      onClick={(event) => {
-        const id = idOf(event);
-        if (id && shown.has(id)) open(id);
-      }}
-      onKeyDown={onKey}
-      onBlur={() => setHovered(null)}
-    >
-      {art}
-    </g>
   );
 }
